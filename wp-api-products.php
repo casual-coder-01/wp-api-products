@@ -17,6 +17,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+
+
 /**
  * ==================================================
  * SECTION 1: ADMIN MENU SETUP
@@ -150,26 +152,40 @@ function wp_api_products_password_field() {
  * inside WordPress options for reuse.
  */
 
+/**
+ * ==================================================
+ * JWT AUTHENTICATION
+ * ==================================================
+ * Logs into the external Node.js API
+ * and returns a clear success / failure result.
+ */
+
 function wp_api_products_get_jwt_token() {
 
-    // ---- Read saved settings ----
+    // Load centralized error messages
+    $messages = wp_api_products_error_messages();
+
+    // STEP 1: Read saved API settings
     $api_url  = get_option( 'wp_api_products_api_url' );
     $username = get_option( 'wp_api_products_username' );
     $password = get_option( 'wp_api_products_password' );
 
-    // ---- Basic validation ----
+    // STEP 2: Check if settings are missing
     if ( empty( $api_url ) || empty( $username ) || empty( $password ) ) {
-        return false;
+        return array(
+            'success' => false,
+            'message' => $messages['missing_settings'],
+        );
     }
 
-    // ---- Send login request ----
+    // STEP 3: Send login request to API
     $response = wp_remote_post(
         $api_url . '/login',
         array(
             'headers' => array(
                 'Content-Type' => 'application/json',
             ),
-            'body'    => json_encode(
+            'body' => json_encode(
                 array(
                     'username' => $username,
                     'password' => $password,
@@ -179,23 +195,47 @@ function wp_api_products_get_jwt_token() {
         )
     );
 
-    // ---- Handle request error ----
+    // STEP 4: Handle network-level error
     if ( is_wp_error( $response ) ) {
-        return false;
-    }
 
-    // ---- Decode response ----
+    // Store readable error for admin
+    update_option(
+        'wp_api_products_last_error',
+        'Unable to connect to API server. Please ensure the Node.js service is running.'
+    );
+
+    // Log technical error for developers
+    error_log( 'WP API Products: JWT login failed. ' . $response->get_error_message() );
+
+    return array(
+        'success' => false,
+        'message' => $messages['api_unreachable'],
+    );
+}
+
+
+
+    // STEP 5: Decode API response
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
 
+    // STEP 6: Validate token existence
     if ( empty( $body['token'] ) ) {
-        return false;
+        return array(
+            'success' => false,
+            'message' => $messages['auth_failed'],
+        );
     }
 
-    // ---- Store token ----
+    // STEP 7: Save JWT token in WordPress
     update_option( 'wp_api_products_jwt', $body['token'] );
 
-    return $body['token'];
+    // STEP 8: Return success result
+    return array(
+        'success' => true,
+        'token'   => $body['token'],
+    );
 }
+
 
 /**
  * ==================================================
@@ -224,8 +264,16 @@ function wp_api_products_fetch_products() {
     );
 
     if ( is_wp_error( $response ) ) {
-        return false;
-    }
+
+    // Log detailed error for developers
+    error_log( 'WP API Products: Product fetch failed. ' . $response->get_error_message() );
+
+    return array(
+        'success' => false,
+        'message' => $messages['api_unreachable'],
+    );
+}
+
 
     return json_decode( wp_remote_retrieve_body( $response ), true );
 }
@@ -261,4 +309,51 @@ function wp_api_products_shortcode() {
 }
 
 add_shortcode( 'api_products', 'wp_api_products_shortcode' );
+
+
+/**
+ * ==================================================
+ * ADMIN NOTICE FOR CONFIGURATION ISSUES
+ * ==================================================
+ * Shows a warning to admins if API settings are missing.
+ */
+
+add_action( 'admin_notices', 'wp_api_products_admin_notice_missing_settings' );
+
+function wp_api_products_admin_notice_missing_settings() {
+
+    // Only show to admins
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+        // Check if there is a stored API error
+    $last_error = get_option( 'wp_api_products_last_error' );
+
+    if ( ! empty( $last_error ) ) {
+
+        echo '<div class="notice notice-error">';
+        echo '<p><strong>WP API Products Error:</strong> ' . esc_html( $last_error ) . '</p>';
+        echo '</div>';
+
+        // Do not show other notices if a real error exists
+        return;
+    }
+
+
+    // Read required settings
+    $api_url  = get_option( 'wp_api_products_api_url' );
+    $username = get_option( 'wp_api_products_username' );
+    $password = get_option( 'wp_api_products_password' );
+
+    // If everything is set, do nothing
+    if ( ! empty( $api_url ) && ! empty( $username ) && ! empty( $password ) ) {
+        return;
+    }
+
+    // Show warning notice
+    echo '<div class="notice notice-warning">';
+    echo '<p><strong>WP API Products:</strong> API configuration is incomplete. Please go to <em>API Products</em> settings and fill all required fields.</p>';
+    echo '</div>';
+}
 
