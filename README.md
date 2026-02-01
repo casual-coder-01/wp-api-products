@@ -104,7 +104,7 @@ Role-based access control
 This plugin connects to a custom Node.js REST API with JWT authentication.
 
 Backend repository:
- https://github.com/your-username/wp-api-backend
+ https://github.com/casual-coder-01/wp-api-backend
 
 The API provides:
 - JWT authentication
