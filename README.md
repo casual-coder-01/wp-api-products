@@ -99,6 +99,19 @@ Custom product layouts
 
 Role-based access control
 
+## Related Backend API
+
+This plugin connects to a custom Node.js REST API with JWT authentication.
+
+Backend repository:
+ https://github.com/your-username/wp-api-backend
+
+The API provides:
+- JWT authentication
+- Protected product endpoints
+- Structured JSON responses
+
+
 
 
 
